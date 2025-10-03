@@ -11,10 +11,9 @@ TOKEN = '7313799357:AAEX6lK-9zFhQwkclXmDo094MRY1dMDFr5E'
 # Initialize the Gemini client. 
 # این بخش به صورت خودکار به دنبال کلید در متغیر محیطی GEMINI_API_KEY می‌گردد
 try:
-    # client = genai.Client() # این روش برای برخی از محیط‌ها کار نمی‌کند
-    # از این روش برای اطمینان از خواندن کلید از متغیر محیطی استفاده می‌کنیم
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
+        # اگر کلید در محیط Koyeb تنظیم نشده باشد، این خطا را پرتاب می‌کند
         raise ValueError("GEMINI_API_KEY not found in environment variables.")
     client = genai.Client(api_key=api_key)
 except Exception as e:
@@ -28,6 +27,7 @@ WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 
 # 1. تابع اصلی برای پردازش پیام‌ها و ارسال به هوش مصنوعی
 async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # اگر پیام یک دستور باشد (مثل /start)، نادیده گرفته می‌شود
     if update.message.text.startswith('/'):
         return
     
@@ -40,10 +40,11 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
-        # 2. ارسال درخواست به مدل Gemini
+        # 2. ارسال درخواست به مدل Gemini با دستورالعمل‌های شخصیتی جدید
         response = client.models.generate_content(
             model='gemini-2.5-flash',  # مدل سریع و کارآمد برای چت
             contents=[
+                {"role": "system", "content": "شما یک کمدین و طنزپرداز حرفه‌ای به نام **شیطون بلا** هستید. لحن شما باید همیشه بسیار شوخ، طنزآمیز و بامزه باشد (لحن طنز را همیشه بالا نگه دارید). هرگز هویت خود را به عنوان هوش مصنوعی، ربات، یا دستیار اعلام نکنید و خود را یک موجودیت باهوش و شیطون فرض کنید. پاسخ‌هایتان باید به فارسی، کوتاه و بسیار گیرا باشند."},
                 user_text
             ]
         )
