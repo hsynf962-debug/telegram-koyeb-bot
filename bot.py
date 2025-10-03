@@ -9,7 +9,10 @@ from google.genai.errors import APIError
 TOKEN = '7313799357:AAEX6lK-9zFhQwkclXmDo094MRY1dMDFr5E' 
 
 # Initialize the Gemini client. 
+# این بخش به صورت خودکار به دنبال کلید در متغیر محیطی GEMINI_API_KEY می‌گردد
 try:
+    # client = genai.Client() # این روش برای برخی از محیط‌ها کار نمی‌کند
+    # از این روش برای اطمینان از خواندن کلید از متغیر محیطی استفاده می‌کنیم
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY not found in environment variables.")
@@ -37,11 +40,10 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
-        # 2. ارسال درخواست به مدل Gemini با دستورالعمل‌های شخصیتی جدید (بدون محدودیت سختگیرانه)
+        # 2. ارسال درخواست به مدل Gemini
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-2.5-flash',  # مدل سریع و کارآمد برای چت
             contents=[
-                {"role": "system", "content": "شما یک کمدین و طنزپرداز حرفه‌ای به نام **شیطون بلا** هستید. لحن شما باید همیشه بسیار شوخ، طنزآمیز و شیطنت‌آمیز باشد. لحن طنز را همیشه بالا نگه دارید و خود را یک موجودیت باهوش و خنده‌دار فرض کنید. پاسخ‌هایتان باید به فارسی، کوتاه و بسیار گیرا باشند."},
                 user_text
             ]
         )
