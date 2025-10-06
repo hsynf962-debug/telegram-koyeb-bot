@@ -7,43 +7,40 @@ from telegram.ext import (
     filters, 
     ContextTypes, 
     CommandHandler, 
-    JobQueue, # JobQueue اضافه شده است
-    CallbackContext # برای JobQueue در وب‌هوک نیاز است
+    CallbackContext,
 )
 from google import genai 
 from google.genai.errors import APIError
 
-# Your Bot Token
+# Your Bot Token (توکن شما از تلگرام)
 TOKEN = '7313799357:AAEX6lK-9zFhQwkclXmDo094MRY1dMDFr5E' 
 
 # --- دیتابیس موقت (برای ثبت مشخصات) ---
 USER_INFO = {} 
-# --- لیست شناسه‌های گروه‌ها برای ارسال دانستنی (مهم!) ---
-# باید ID گروه(های) خود را در اینجا وارد کنید. 
-# از دستور /getgroupid در گروه استفاده کنید.
 GROUP_IDS = [] 
 
 # Initialize the Gemini client. 
 try:
+    # کلید API از متغیرهای محیطی Termux یا Koyeb خوانده می‌شود
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        raise ValueError("GEMINI_API_KEY not found in environment variables.")
-    client = genai.Client(api_key=api_key)
+        print("CRITICAL: GEMINI_API_KEY not found in environment variables.")
+        client = None
+    else:
+        client = genai.Client(api_key=api_key)
 except Exception as e:
     print(f"Gemini Client Initialization Error: {e}")
     client = None
 
-# متغیرهای محیطی Koyeb
+# متغیرهای محیطی Koyeb (اگر در Termux نباشند، ربات در حالت Polling اجرا می‌شود)
 PORT = int(os.environ.get('PORT', 8080))
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 
-# --- دستورالعمل سیستمی برای شیطون بلا ---
 SYSTEM_INSTRUCTION = "شما یک کمدین و طنزپرداز حرفه‌ای به نام **شیطون بلا** هستید. لحن شما باید همیشه بسیار شوخ، طنزآمیز و شیطنت‌آمیز باشد. لحن طنز را همیشه بالا نگه دارید و خود را یک موجودیت باهوش و خنده‌دار فرض کنید. پاسخ‌هایتان باید به فارسی، کوتاه و بسیار گیرا باشند."
 
 # --- توابع مدیریتی گروه ---
 
 async def admin_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ... (کد قبلی) ...
     if update.message.chat.type in ["group", "supergroup"]:
         try:
             me = await context.bot.get_chat_member(update.effective_chat.id, context.bot.id)
@@ -58,7 +55,6 @@ async def admin_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("این دستور فقط در گروه‌ها قابل استفاده است.")
 
 async def anti_link_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ... (کد قبلی) ...
     if update.message and update.message.chat.type in ["group", "supergroup"]:
         has_url_text = update.message.text and ('http://' in update.message.text or 'https://' in update.message.text or 'www.' in update.message.text)
         has_url_entity = update.message.entities and any(e.type in ['url', 'text_link'] for e in update.message.entities)
@@ -71,7 +67,6 @@ async def anti_link_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 print(f"Could not delete message (missing permission?): {e}")
 
 async def greet_new_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ... (کد قبلی) ...
     for member in update.message.new_chat_members:
         if member.is_bot and member.username != context.bot.username:
             continue
@@ -81,18 +76,12 @@ async def greet_new_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if client:
             try:
                 prompt = f"یک پیام خوش آمدگویی بسیار کوتاه و طنزآمیز برای کاربر جدید {member_name} که تازه به گروه پیوسته، بنویس و از او بخواه که برای ثبت مشخصات، عبارت 'ثبت اصل من:' را به همراه مشخصات خود (مثلا نام، سن، شهر) بفرستد. خودت را شیطون بلا معرفی کن."
-                
                 response = client.models.generate_content(
                     model='gemini-2.5-flash',
-                    contents=[
-                        {"role": "user", "parts": [{"text": prompt}]} 
-                    ],
-                    config={
-                        "system_instruction": SYSTEM_INSTRUCTION
-                    }
+                    contents=[{"role": "user", "parts": [{"text": prompt}]}],
+                    config={"system_instruction": SYSTEM_INSTRUCTION}
                 )
                 welcome_text = response.text
-                
             except Exception as e:
                 print(f"Gemini welcome message generation failed: {e}")
                 welcome_text = f"سلام {member_name}، به گروه خوش آمدید! (شیطون بلا در حال استراحت است) برای ثبت مشخصات، لطفاً پیام خود را با 'ثبت اصل من:' شروع کنید."
@@ -105,7 +94,6 @@ async def greet_new_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def save_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ... (کد قبلی) ...
     user_id = update.effective_user.id
     message_text = update.message.text.strip()
     
@@ -123,9 +111,7 @@ async def save_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 prompt = f"به کاربر بگو مشخصاتش ('{user_info}') با موفقیت ثبت شد و بگو 'حالا برو حالشو ببر!' با لحن طنز و بامزه شیطون بلا."
                 response = client.models.generate_content(
                     model='gemini-2.5-flash',
-                    contents=[
-                        {"role": "user", "parts": [{"text": prompt}]} 
-                    ],
+                    contents=[{"role": "user", "parts": [{"text": prompt}]}],
                     config={"system_instruction": SYSTEM_INSTRUCTION}
                 )
                 reply_text = response.text
@@ -139,7 +125,6 @@ async def save_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return False
 
 async def show_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ... (کد قبلی) ...
     user_id = update.effective_user.id
     message_text = update.message.text.strip().lower()
     
@@ -163,10 +148,9 @@ async def show_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return True
     return False
 
-# --- قابلیت دانستنی خودکار ---
+# --- قابلیت دانستنی خودکار (با تغییر برای JobQueue) ---
 
-# تابع اصلی برای تولید و ارسال دانستنی
-async def send_fact_to_groups(context: CallbackContext): # از CallbackContext استفاده می کنیم
+async def send_fact_to_groups(context: CallbackContext):
     if not GROUP_IDS:
         print("GROUP_IDS is empty. Cannot send facts.")
         return
@@ -176,20 +160,14 @@ async def send_fact_to_groups(context: CallbackContext): # از CallbackContext 
         return
 
     try:
-        # 1. تولید دانستنی طنز با استفاده از شیطون بلا
         prompt = "یک دانستنی جالب، کوتاه و کمی طنز درباره حیوانات، فضا، یا تاریخ بنویس. این دانستنی باید به عنوان یک پیام گروهی جذاب و شیطنت آمیز از طرف شیطون بلا باشد. در انتها با یک شکلک بامزه پیام را تمام کن."
         response = client.models.generate_content(
             model='gemini-2.5-flash',
-            contents=[
-                {"role": "user", "parts": [{"text": prompt}]} 
-            ],
-            config={
-                "system_instruction": SYSTEM_INSTRUCTION
-            }
+            contents=[{"role": "user", "parts": [{"text": prompt}]}],
+            config={"system_instruction": SYSTEM_INSTRUCTION}
         )
         fact_text = response.text
         
-        # 2. ارسال دانستنی به همه گروه‌های ثبت شده
         for chat_id in GROUP_IDS:
             try:
                 await context.bot.send_message(chat_id=chat_id, text=fact_text)
@@ -199,11 +177,10 @@ async def send_fact_to_groups(context: CallbackContext): # از CallbackContext 
     except Exception as e:
         print(f"Error generating or sending periodic fact: {e}")
 
-# تابع /getgroupid: برای کمک به کاربر برای پیدا کردن ID گروه
+# تابع /getgroupid: 
 async def get_group_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type in ["group", "supergroup"]:
         chat_id = update.message.chat.id
-        # اضافه کردن چت آیدی به لیست GROUP_IDS برای کاربر ساده تر است
         if chat_id not in GROUP_IDS:
             GROUP_IDS.append(chat_id)
             await update.message.reply_text(
@@ -221,7 +198,6 @@ async def get_group_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- توابع هوش مصنوعی (شیطون بلا) ---
 
 async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # اگر پیام یک دستور باشد یا توسط هندلرهای save/show مدیریت شده باشد، نادیده گرفته می شود
     if update.message.text and (update.message.text.startswith('/') or await save_user_info(update, context) or await show_user_info(update, context)):
         return
     
@@ -237,15 +213,10 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
-        # ارسال درخواست به مدل Gemini
         response = client.models.generate_content(
             model='gemini-2.5-flash',
-            contents=[
-                {"role": "user", "parts": [{"text": user_text}]} 
-            ],
-            config={
-                "system_instruction": SYSTEM_INSTRUCTION
-            }
+            contents=[{"role": "user", "parts": [{"text": user_text}]}],
+            config={"system_instruction": SYSTEM_INSTRUCTION}
         )
         
         reply_text = response.text
@@ -259,22 +230,34 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(reply_text)
 
+# --- تابع آماده سازی JobQueue (رفع خطای run_repeating) ---
+# این تابع فقط یک بار پس از شروع وب‌هوک اجرا می‌شود
+async def post_init_job_queue(application: Application):
+    """Adds the recurring job after the application is started."""
+    if application.job_queue:
+        # تنظیم ارسال دانستنی هر 3600 ثانیه (1 ساعت)
+        application.job_queue.run_repeating(send_fact_to_groups, interval=3600, first=60)
+        print("JobQueue: Periodic fact sending job added successfully.")
+
 # --- تابع اصلی ---
 
 def main():
     # ساخت اپلیکیشن با JobQueue
-    application = Application.builder().token(TOKEN).build()
+    application = Application.builder().token(TOKEN).post_init(post_init_job_queue).build()
     
-    # 1. افزودن JobQueue
-    job_queue = application.job_queue
+    # 2. افزودن فیلترها و دستورات مدیریتی
+    application.add_handler(CommandHandler("admincheck", admin_check))
+    application.add_handler(CommandHandler("getgroupid", get_group_id))
+    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, greet_new_members))
     
-    # تنظیم ارسال دانستنی هر 3600 ثانیه (1 ساعت)
-    job_queue.run_repeating(send_fact_to_groups, interval=3600, first=60) 
+    # فیلتر ضد لینک
+    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, anti_link_filter), group=0) 
     
-    # **مهمترین رفع باگ برای وب‌هوک:** # باید JobQueue را در محیط وب‌هوک آغاز کنیم تا وظایف را چک کند
+    # هوش مصنوعی
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_chat), group=1)
+    
     if WEBHOOK_URL:
-        # JobQueue باید قبل از اجرای وب‌هوک آغاز شود
-        job_queue.start() 
+        # اجرای JobQueue و وب‌هوک در محیط Koyeb
         application.run_webhook(
             listen="0.0.0.0", 
             port=PORT,
@@ -283,8 +266,9 @@ def main():
         )
         print(f"Bot started with webhook at: {WEBHOOK_URL}/{TOKEN}")
     else:
-        print("Running with polling (local test)...")
+        # اجرای JobQueue در حالت Polling (برای تست محلی - این همان حالتی است که در Termux نیاز دارید)
         application.run_polling(poll_interval=3.0)
+        print("Running with polling (local test)...") # پیام موفقیت برای Termux
 
 
 if __name__ == '__main__':
