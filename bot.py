@@ -1,4 +1,4 @@
-import os
+Import os
 import asyncio 
 from telegram import Update
 from telegram.ext import (
@@ -201,3 +201,91 @@ async def send_fact_to_groups(context: CallbackContext): # از CallbackContext 
 
 # تابع /getgroupid: برای کمک به کاربر برای پیدا کردن ID گروه
 async def get_group_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.chat.type in ["group", "supergroup"]:
+        chat_id = update.message.chat.id
+        # اضافه کردن چت آیدی به لیست GROUP_IDS برای کاربر ساده تر است
+        if chat_id not in GROUP_IDS:
+            GROUP_IDS.append(chat_id)
+            await update.message.reply_text(
+                f"ID این گروه: `{chat_id}` با موفقیت به لیست ارسال دانستنی‌های شیطون بلا اضافه شد! (ID در حافظه موقت ربات ثبت شد)", 
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                f"ID این گروه (`{chat_id}`) قبلاً در لیست ارسال دانستنی‌ها ثبت شده است.", 
+                parse_mode='Markdown'
+            )
+    else:
+        await update.message.reply_text("این دستور فقط در گروه‌ها کاربرد دارد.")
+
+# --- توابع هوش مصنوعی (شیطون بلا) ---
+
+async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # اگر پیام یک دستور باشد یا توسط هندلرهای save/show مدیریت شده باشد، نادیده گرفته می شود
+    if update.message.text and (update.message.text.startswith('/') or await save_user_info(update, context) or await show_user_info(update, context)):
+        return
+    
+    if not update.message.text:
+        return
+        
+    user_text = update.message.text
+    
+    if client is None:
+        await update.message.reply_text("متأسفم، اتصال به سرویس هوش مصنوعی برقرار نشد. لطفاً کلید GEMINI API را در تنظیمات Koyeb بررسی کنید.")
+        return
+
+    try:
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+
+        # ارسال درخواست به مدل Gemini
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=[
+                {"role": "user", "parts": [{"text": user_text}]} 
+            ],
+            config={
+                "system_instruction": SYSTEM_INSTRUCTION
+            }
+        )
+        
+        reply_text = response.text
+        
+    except APIError as e:
+        reply_text = f"خطا در پردازش درخواست توسط هوش مصنوعی (Gemini API): {e}"
+        print(f"API Error: {e}")
+    except Exception as e:
+        reply_text = f"خطا در پردازش: {e}"
+        print(f"General Error: {e}")
+
+    await update.message.reply_text(reply_text)
+
+# --- تابع اصلی ---
+
+def main():
+    # ساخت اپلیکیشن با JobQueue
+    application = Application.builder().token(TOKEN).build()
+    
+    # 1. افزودن JobQueue
+    job_queue = application.job_queue
+    
+    # تنظیم ارسال دانستنی هر 3600 ثانیه (1 ساعت)
+    job_queue.run_repeating(send_fact_to_groups, interval=3600, first=60) 
+    
+    # **مهمترین رفع باگ برای وب‌هوک:** # باید JobQueue را در محیط وب‌هوک آغاز کنیم تا وظایف را چک کند
+    if WEBHOOK_URL:
+        # JobQueue باید قبل از اجرای وب‌هوک آغاز شود
+        job_queue.start() 
+        application.run_webhook(
+            listen="0.0.0.0", 
+            port=PORT,
+            url_path=TOKEN,
+            webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
+        )
+        print(f"Bot started with webhook at: {WEBHOOK_URL}/{TOKEN}")
+    else:
+        print("Running with polling (local test)...")
+        application.run_polling(poll_interval=3.0)
+
+
+if __name__ == '__main__':
+    main()
