@@ -1,3 +1,2 @@
 python-telegram-bot
-google-genai  # کتابخانه رسمی گوگل برای Gemini API
-requests
+google-genai
