@@ -13,7 +13,7 @@ from google import genai
 from google.genai.errors import APIError
 
 # Your Bot Token (توکن شما از تلگرام)
-TOKEN = '7313799357:AAEX6lK-9zFhQwkclXmDo094MRY1dMDFr5E' 
+TOKEN = '7313799357:AAEX6lK-9zFhQwkclXmDo094MR1dMDFr5E' 
 
 # --- دیتابیس موقت (برای ثبت مشخصات) ---
 USER_INFO = {} 
@@ -38,7 +38,7 @@ WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 
 SYSTEM_INSTRUCTION = "شما یک کمدین و طنزپرداز حرفه‌ای به نام **شیطون بلا** هستید. لحن شما باید همیشه بسیار شوخ، طنزآمیز و شیطنت‌آمیز باشد. لحن طنز را همیشه بالا نگه دارید و خود را یک موجودیت باهوش و خنده‌دار فرض کنید. پاسخ‌هایتان باید به فارسی، کوتاه و بسیار گیرا باشند."
 
-# --- توابع مدیریتی گروه ---
+# --- توابع مدیریتی گروه و ابزارهای ربات ---
 
 async def admin_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.chat.type in ["group", "supergroup"]:
@@ -53,6 +53,20 @@ async def admin_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("خطا در بررسی وضعیت مدیر: آیا ربات به این گروه اضافه شده است؟")
     else:
         await update.message.reply_text("این دستور فقط در گروه‌ها قابل استفاده است.")
+
+# تابع جدید: نمایش وظایف ربات
+async def show_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tasks_list = (
+        "🎉 **شیطون بلا** هستم! وظایف من اینهاست: 🎉\n\n"
+        "1. **چت هوش مصنوعی:** با لحن طنز و بامزه به هر سوالی پاسخ می‌دهم.\n"
+        "2. **ثبت اصل من:** می‌توانید با ارسال `ثبت اصل من: نام، سن، شهر` مشخصات خود را ذخیره کنید.\n"
+        "3. **مشاهده اصل:** با ارسال عبارت `اصل من` مشخصات ثبت شده خود را ببینید.\n"
+        "4. **خوشامدگویی:** به اعضای جدید با یک پیام طنزآمیز خوشامد می‌گویم.\n"
+        "5. **ضد لینک:** لینک‌های ارسالی را در گروه‌ها حذف می‌کنم (اگر مدیر باشم).\n"
+        "6. **دانستنی خودکار:** هر یک ساعت یک دانستنی طنزآمیز به گروه‌های ثبت شده می‌فرستم.\n"
+        "7. **ابزارهای گروهی:** از دستورات `/getgroupid` و `/admincheck` برای مدیریت گروه استفاده کنید."
+    )
+    await update.message.reply_text(tasks_list, parse_mode='Markdown')
 
 async def anti_link_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message and update.message.chat.type in ["group", "supergroup"]:
@@ -148,7 +162,7 @@ async def show_user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return True
     return False
 
-# --- قابلیت دانستنی خودکار (با تغییر برای JobQueue) ---
+# --- قابلیت دانستنی خودکار (JobQueue) ---
 
 async def send_fact_to_groups(context: CallbackContext):
     if not GROUP_IDS:
@@ -195,43 +209,8 @@ async def get_group_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("این دستور فقط در گروه‌ها کاربرد دارد.")
 
-# --- توابع هوش مصنوعی (شیطون بلا) ---
-
-async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.text and (update.message.text.startswith('/') or await save_user_info(update, context) or await show_user_info(update, context)):
-        return
-    
-    if not update.message.text:
-        return
-        
-    user_text = update.message.text
-    
-    if client is None:
-        await update.message.reply_text("متأسفم، اتصال به سرویس هوش مصنوعی برقرار نشد. لطفاً کلید GEMINI API را در تنظیمات Koyeb بررسی کنید.")
-        return
-
-    try:
-        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=[{"role": "user", "parts": [{"text": user_text}]}],
-            config={"system_instruction": SYSTEM_INSTRUCTION}
-        )
-        
-        reply_text = response.text
-        
-    except APIError as e:
-        reply_text = f"خطا در پردازش درخواست توسط هوش مصنوعی (Gemini API): {e}"
-        print(f"API Error: {e}")
-    except Exception as e:
-        reply_text = f"خطا در پردازش: {e}"
-        print(f"General Error: {e}")
-
-    await update.message.reply_text(reply_text)
-
 # --- تابع آماده سازی JobQueue (رفع خطای run_repeating) ---
-# این تابع فقط یک بار پس از شروع وب‌هوک اجرا می‌شود
+# این تابع فقط یک بار پس از شروع وب‌هوک/Polling اجرا می‌شود
 async def post_init_job_queue(application: Application):
     """Adds the recurring job after the application is started."""
     if application.job_queue:
@@ -248,6 +227,7 @@ def main():
     # 2. افزودن فیلترها و دستورات مدیریتی
     application.add_handler(CommandHandler("admincheck", admin_check))
     application.add_handler(CommandHandler("getgroupid", get_group_id))
+    application.add_handler(CommandHandler("tasks", show_tasks)) # <-- دستور جدید
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, greet_new_members))
     
     # فیلتر ضد لینک
@@ -266,7 +246,7 @@ def main():
         )
         print(f"Bot started with webhook at: {WEBHOOK_URL}/{TOKEN}")
     else:
-        # اجرای JobQueue در حالت Polling (برای تست محلی - این همان حالتی است که در Termux نیاز دارید)
+        # اجرای JobQueue در حالت Polling (برای تست محلی - Termux)
         application.run_polling(poll_interval=3.0)
         print("Running with polling (local test)...") # پیام موفقیت برای Termux
 
