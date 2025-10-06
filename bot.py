@@ -53,13 +53,20 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await show_user_info(update, context):
         return
 
-    try:
-        # اگر در گروه باشد و ربات منشن نشده، نادیده گرفته می‌شود.
-        if update.message.chat.type in ["group", "supergroup"] and f"@{context.bot.username}" not in update.message.text:
+    try:        # منطق نادیده گرفتن در گروه: اگر ربات منشن نشده باشد، پیامی ارسال نمی‌شود.
+        if update.message.chat.type in ["group", "supergroup"]:
+            if update.message.text and f"@{context.bot.username}" not in update.message.text:
+                return
+            # حذف منشن ربات در صورت وجود
+            prompt = update.message.text.replace(f"@{context.bot.username}", "").strip()
+        else:
+            # چت خصوصی
+            prompt = update.message.text
+        
+        # اگر پیام فقط حاوی 'ثبت اصل من:' بود و اطلاعاتی نداشت
+        if len(prompt) < 2:
             return
 
-        # حذف منشن ربات از پیام کاربر در صورت وجود
-        prompt = update.message.text.replace(f"@{context.bot.username}", "").strip()
         
         # اگر پیام فقط حاوی 'ثبت اصل من:' بود و اطلاعاتی نداشت
         if len(prompt) < 2:
