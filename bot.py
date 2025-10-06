@@ -13,6 +13,7 @@ from google import genai
 from google.genai.errors import APIError
 
 # Your Bot Token (توکن شما از تلگرام)
+# توجه: بهتر است این توکن را نیز به عنوان یک متغیر محیطی (مثلا BOT_TOKEN) تنظیم کنید.
 TOKEN = '7313799357:AAEX6lK-9zFhQwkclXmDo094MR1dMDFr5E' 
 
 # --- دیتابیس موقت (برای ثبت مشخصات) ---
@@ -37,6 +38,49 @@ PORT = int(os.environ.get('PORT', 8080))
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 
 SYSTEM_INSTRUCTION = "شما یک کمدین و طنزپرداز حرفه‌ای به نام **شیطون بلا** هستید. لحن شما باید همیشه بسیار شوخ، طنزآمیز و شیطنت‌آمیز باشد. لحن طنز را همیشه بالا نگه دارید و خود را یک موجودیت باهوش و خنده‌دار فرض کنید. پاسخ‌هایتان باید به فارسی، کوتاه و بسیار گیرا باشند."
+
+# --- تابع چت هوش مصنوعی (AI Chat) ---
+# این تابع برای حل خطای NameError در Koyeb اضافه شد.
+async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if client is None:
+        await update.message.reply_text("متاسفم! شیطون بلا خاموش شده (کلید API جِمینی پیدا نشد).")
+        return
+
+    # ابتدا فیلترهای ثبت مشخصات را چک می‌کنیم تا اگر پیام مربوط به آن بود، پاسخش را بدهیم و به Gemini نفرستیم.
+    if await save_user_info(update, context):
+        return
+        
+    if await show_user_info(update, context):
+        return
+
+    try:
+        # اگر در گروه باشد و ربات منشن نشده، نادیده گرفته می‌شود.
+        if update.message.chat.type in ["group", "supergroup"] and f"@{context.bot.username}" not in update.message.text:
+            return
+
+        # حذف منشن ربات از پیام کاربر در صورت وجود
+        prompt = update.message.text.replace(f"@{context.bot.username}", "").strip()
+        
+        # اگر پیام فقط حاوی 'ثبت اصل من:' بود و اطلاعاتی نداشت
+        if len(prompt) < 2:
+            return
+
+        # ارسال پیام به Gemini
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=[{"role": "user", "parts": [{"text": prompt}]}],
+            config={"system_instruction": SYSTEM_INSTRUCTION}
+        )
+        
+        await update.message.reply_text(response.text)
+        
+    except APIError as e:
+        print(f"Gemini API Error: {e}")
+        await update.message.reply_text("آی! یه مشکلی در ارتباط با جِمینی پیش اومده. کلید API رو چک کن.")
+    except Exception as e:
+        print(f"General Error in ai_chat: {e}")
+        await update.message.reply_text("فکر کنم یه شوخی بزرگ شده! یه خطای ناشناخته رخ داد. 🤯")
+
 
 # --- توابع مدیریتی گروه و ابزارهای ربات ---
 
@@ -64,7 +108,8 @@ async def show_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "4. **خوشامدگویی:** به اعضای جدید با یک پیام طنزآمیز خوشامد می‌گویم.\n"
         "5. **ضد لینک:** لینک‌های ارسالی را در گروه‌ها حذف می‌کنم (اگر مدیر باشم).\n"
         "6. **دانستنی خودکار:** هر یک ساعت یک دانستنی طنزآمیز به گروه‌های ثبت شده می‌فرستم.\n"
-        "7. **ابزارهای گروهی:** از دستورات `/getgroupid` و `/admincheck` برای مدیریت گروه استفاده کنید."
+        "7. **ابزارهای گروهی:** از دستورات `/getgroupid` و `/admincheck` برای مدیریت گروه استفاده کنید.\n"
+        "8. **وظایف:** با دستور `/tasks` همین لیست را مشاهده می‌کنید."
     )
     await update.message.reply_text(tasks_list, parse_mode='Markdown')
 
@@ -209,8 +254,7 @@ async def get_group_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("این دستور فقط در گروه‌ها کاربرد دارد.")
 
-# --- تابع آماده سازی JobQueue (رفع خطای run_repeating) ---
-# این تابع فقط یک بار پس از شروع وب‌هوک/Polling اجرا می‌شود
+# تابع آماده سازی JobQueue (رفع خطای run_repeating)
 async def post_init_job_queue(application: Application):
     """Adds the recurring job after the application is started."""
     if application.job_queue:
@@ -227,14 +271,14 @@ def main():
     # 2. افزودن فیلترها و دستورات مدیریتی
     application.add_handler(CommandHandler("admincheck", admin_check))
     application.add_handler(CommandHandler("getgroupid", get_group_id))
-    application.add_handler(CommandHandler("tasks", show_tasks)) # <-- دستور جدید
+    application.add_handler(CommandHandler("tasks", show_tasks)) 
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, greet_new_members))
     
     # فیلتر ضد لینک
     application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, anti_link_filter), group=0) 
     
     # هوش مصنوعی
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_chat), group=1)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_chat), group=1) # <-- هندلر ai_chat که قبلا کم بود
     
     if WEBHOOK_URL:
         # اجرای JobQueue و وب‌هوک در محیط Koyeb
